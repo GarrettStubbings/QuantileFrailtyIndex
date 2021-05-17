@@ -20,9 +20,9 @@ if __name__ == "__main__":
     pl.close('all')
     
     # Data set to look at
-    data_set = "CSHA"
+    data_set = "ELSA"
     # Wave to look at if doing elsa data
-    wave = 4
+    wave = 2
 
     # Data directory
     data_dir = "../ELSA/Data/"
@@ -61,6 +61,8 @@ if __name__ == "__main__":
         mortality = (time_to_death < mortality_followup) & (
             time_to_death != -1)
         mortality = mortality.astype(int)
+        # Clinical frailty here is ADL/IADL deficits
+        fi_clin = data_df['ADL/IADL'].values
 
     elif "NHANES" in data_set:
         file_name = data_dir + "nhanes.csv"
@@ -74,6 +76,7 @@ if __name__ == "__main__":
         time_to_death = data_df['TTD'].values # in months
         mortality = data_df['mort'].values # NHANES has binary 5 year mortality
         fi_pub = data_df['FILab'].values
+        fi_clin = data_df['FIClin'].values
 
     elif "CSHA" in data_set:
         file_name = data_dir + "csha_data.csv"
@@ -91,6 +94,7 @@ if __name__ == "__main__":
             time_to_death[~pl.isnan(time_to_death)] < mortality_threshold)
         mortality = mortality.astype(int)
         fi_pub = data_df['FILab'].values
+        fi_clin = data_df['FICSHA'].values
 
     else:
         print("Pick a working dataset")
@@ -98,18 +102,7 @@ if __name__ == "__main__":
 
     conditions = spearman_age_conditions(biomarkers, ages, condition_age)
 
-    # Demographics: Age quantilesribution
-    plot_age_quantilesribution = 0
-    if plot_age_quantilesribution:
-        age_bins = pl.arange(20, 110, 5)
-        pl.figure(figsize = (8,6))
-        counts, bins = pl.hist(ages, age_bins)[:2]
-        bins = bins[:-1]
-        pl.xlabel('Age (years)', fontsize = fs)
-        pl.ylabel('Count', fontsize = fs)
-        filled_bins = bins[counts > 0]
-        pl.xlim(min(filled_bins) - 1, max(filled_bins) + 6)
-        pl.savefig(plots_dir + '{}AgeDistribution.pdf'.format(data_set))
+    # Figure 1: Rank normalization and reference cohort examples (in ELSA)
 
     # Figure 2 in QFI paper: number of quantiles considered
     quantile_coarsening_plot = 0
@@ -423,7 +416,7 @@ if __name__ == "__main__":
 
     # Figure 5: Limits of QFI with changing age reference
     # No Published FI-Lab to compare for ELSA data
-    qfi_limits = 1
+    qfi_limits = 0
     if qfi_limits:
         bin_width = 5
         min_age = min(ages) - min(ages)%bin_width
@@ -524,7 +517,7 @@ if __name__ == "__main__":
     # Figure 6: age-controlled prediction plot
     # here hard coded for QFI-80
     # There are a million different things to fit and measure here
-    age_paired_prediction = 0
+    age_paired_prediction = 1
     if age_paired_prediction:
         bin_width = 5
         n_samp = 100
@@ -744,18 +737,15 @@ if __name__ == "__main__":
         vorders = [10, 1]
 
         values = [0, 0.2, 0.85, 1]
-        cm = mpl.cm.viridis(pl.linspace(0, 1, 100))
-        cm = mpl.colors.ListedColormap(cm)
-        c_norm = pl.Normalize(vmin=0, vmax=values[-1])
-        scalar_map = cmx.ScalarMappable(norm=c_norm, cmap = cm)
-        colors = [scalar_map.to_rgba(v) for v in values]
+        colors = get_colors_from_cmap(values)
 
         sex_colours = ['C0', colors[2]]
         sex_markers = ['o', 's']
 
         age_mask = (ages >= 80) & (ages < 85)
-        quantiles_80 = projected_quantiles(biomarkers, biomarkers[age_mask,:], conditions)
-        qqfi_80 = pl.nanmean(quantiles_80, axis = 1)
+        quantiles_80 = projected_quantiles(biomarkers, biomarkers[age_mask,:],
+                                                                conditions)
+        qfi_80 = pl.nanmean(quantiles_80, axis = 1)
         bin_width = 5
         age_bins = pl.arange(min(ages), max(ages) + bin_width, bin_width)
         pl.figure(figsize = (8,6))
@@ -773,7 +763,7 @@ if __name__ == "__main__":
             adjusted_qfi = pl.nanmean(adjusted_quantiles, axis = 1)
             mid_points, binned_adjusted_qfi = bin_x_by_y(
                 adjusted_qfi, ages[sex_mask], age_bins)
-            non_adjusted_qfi = qqfi_80[sex_mask]
+            non_adjusted_qfi = qfi_80[sex_mask]
             mid_points, binned_qfi = bin_x_by_y(
             non_adjusted_qfi, ages[sex_mask], age_bins)
 
@@ -788,7 +778,7 @@ if __name__ == "__main__":
                 capsize = 3, label = label + " Adjusted", ms = 7 + 2*i,
                 zorder = vorders[i])
 
-            non_adjusted_qfi = qqfi_80[sex_mask]
+            non_adjusted_qfi = qfi_80[sex_mask]
             mid_points, binned_qfi = bin_x_by_y(
                 non_adjusted_qfi, ages[sex_mask], age_bins)
 
@@ -816,42 +806,15 @@ if __name__ == "__main__":
                 capsize = 3, label = label + " FI-Clin", ms = 8)
 
 
-            """
-            adjusted_means = [pl.average(a) for a in binned_adjusted_qfi]
-            adjusted_errors = [pl.std(a)/pl.sqrt(len(a)) for a in
-                binned_adjusted_qfi]
-            pl.errorbar(mid_points, adjusted_means, yerr = adjusted_errors,
-                c = sex_colours[i], marker = sex_markers[i], ls = 'none',
-                capsize = 3, label = label + " Adjusted", ms = 7 + 2*i,
-                zorder = vorders[i])
-
-            non_adjusted_means = [pl.average(a) for a in binned_qfi]
-            non_adjusted_errors = [pl.std(a)/pl.sqrt(len(a)) for a in
-                binned_qfi]
-            pl.errorbar(mid_points, non_adjusted_means,
-                yerr = non_adjusted_errors, c = sex_colours[i],
-                marker = sex_markers[i], mfc = 'w', ls = 'none', capsize = 3,
-                label = label + " Non-Adjusted", ms = 7 + 2*i,
-                zorder = vorders[i])
-
-            mid_points, binned_fi_clin = bin_x_by_y(
-                fi_clin[sex_mask], ages[sex_mask], age_bins)
-            fi_clin_means = [pl.average(a) for a in binned_fi_clin]
-            fi_clin_errors = [pl.std(a)/pl.sqrt(len(a)) for a in
-                binned_fi_clin]
-            pl.errorbar(mid_points, fi_clin_means, yerr = fi_clin_errors,
-                c = 'k', marker = sex_markers[i], ls = 'none',
-                capsize = 3, label = label + " FI-Clin", ms = 8)
-            """
-
         pl.legend(fontsize = fs*0.7)
         pl.xticks(fontsize = fs*0.8)
         pl.yticks(fontsize = fs*0.8)
         pl.xlabel('Age (years)', fontsize = fs)
         pl.ylabel('QFI', fontsize = fs)
-        pl.savefig('Plots/PaperPlots/{}SexAdjustedQFIVsAge.pdf'.format(data_set))
+        pl.savefig(plots_dir + '{}SexAdjustedQFIVsAge.pdf'.format(data_set))
 
-        ##### WORLDS SHITTIEST COPY PASTE
+        ##### Ugly bit of work here, some gory details made it worth doing this
+        # whole shabang over again (in my head at least)
 
         bin_width = 0.1
         qfi_bins = pl.arange(0, 1 + bin_width, bin_width)
@@ -881,7 +844,7 @@ if __name__ == "__main__":
                 zorder = vorders[i])
 
 
-            non_adjusted_qfi = qqfi_80[sex_mask]
+            non_adjusted_qfi = qfi_80[sex_mask]
             mid_points, binned_qfi = bin_x_by_y(fi_clin[sex_mask],
                 non_adjusted_qfi, qfi_bins)
             length_mask = [len(a) > 10 for a in binned_qfi]
@@ -901,7 +864,7 @@ if __name__ == "__main__":
         pl.yticks(fontsize = fs*0.8)
         pl.xlabel('QFI', fontsize = fs)
         pl.ylabel('FI-Clin', fontsize = fs)
-        pl.savefig('Plots/PaperPlots/{0}SexAdjustedFIClinVsQFI.pdf'.format(
+        pl.savefig(plots_dir + '{0}SexAdjustedFIClinVsQFI.pdf'.format(
             data_set))
 
     # Figure 7: Cross-validation using sex-specific reference populations
@@ -916,7 +879,8 @@ if __name__ == "__main__":
 
         aucs = []
         # Non adjusted (regular qfi)
-        quantiles = projected_quantiles(biomarkers, biomarkers[age_mask,:], conditions)
+        quantiles = projected_quantiles(biomarkers, biomarkers[age_mask,:],
+                                                                conditions)
         qfi = pl.nanmean(quantiles, axis = 1)
         aucs.append(roc_auc_score(mortality, qfi))
         # adjust for sex
@@ -937,8 +901,8 @@ if __name__ == "__main__":
             aucs.append(roc_auc_score(mortality[sex_mask], adjusted_qfi))
             
             # Age and sex paired
-            age_sex_qfi = age_paired_qfi(sex_biomarkers, ages[sex_mask], conditions,
-                bin_width = 5)
+            age_sex_qfi = age_paired_qfi(sex_biomarkers, ages[sex_mask],
+                                                conditions, bin_width = 5)
             fully_adjusted_qfi_list.append(age_sex_qfi)
             aucs.append(roc_auc_score(mortality[sex_mask], age_sex_qfi))
 
@@ -946,12 +910,10 @@ if __name__ == "__main__":
                                 pl.concatenate(sex_adjusted_qfi_list)))
         aucs.insert(2, roc_auc_score(pl.concatenate(mortality_list),
                                 pl.concatenate(fully_adjusted_qfi_list)))
+
         values = [0, 0.2, 0.85, 1]
-        cm = mpl.cm.viridis(pl.linspace(0, 1, 100))
-        cm = mpl.colors.ListedColormap(cm)
-        c_norm = pl.Normalize(vmin=0, vmax=values[-1])
-        scalar_map = cmx.ScalarMappable(norm=c_norm, cmap = cm)
-        colors = [scalar_map.to_rgba(v) for v in values]
+        colors = get_colors_from_cmap(values)
+        
 
         sex_colours = ['C0', colors[2]]
         sex_markers = ['o', 's']
@@ -972,7 +934,7 @@ if __name__ == "__main__":
                 test_size = 0.5)
             # just need one half of the data
             sampled_biomarkers  = split_data[0]
-            sampled_mort= split_data[2]
+            sampled_mortality = split_data[2]
             sampled_age = split_data[4]
             sampled_sex = split_data[6]
 
@@ -993,8 +955,8 @@ if __name__ == "__main__":
             fully_adjusted_qfis = []
             for i, label in enumerate(sex_labels):
                 sex_mask = sex_masks[i]
-                mortality = sampled_mortality[sex_mask]
-                mortalities.append(mortality)
+                sex_mortality = sampled_mortality[sex_mask]
+                mortalities.append(sex_mortality)
                 # Sex + 80-85 year old reference for QFI-80
                 both_mask = sex_mask & age_mask
                 sex_biomarkers = sampled_biomarkers[sex_mask,:]
@@ -1003,17 +965,17 @@ if __name__ == "__main__":
                     sex_reference_biomarkers, conditions)
                 sex_adjusted_qfi = pl.nanmean(sex_adjusted_quantiles, axis = 1)
                 sex_adjusted_qfis.append(sex_adjusted_qfi)
-                resampled_aucs[4 + 3*i].append(roc_auc_score(mortality,
+                resampled_aucs[4 + 3*i].append(roc_auc_score(sex_mortality,
                     sex_adjusted_qfi))
                 # Non-Adjusted qfi (just grabbed from full qfi quantilesribution)    
                 non_adjusted_qfi = qfi[sex_mask]
-                resampled_aucs[3 + 3*i].append(roc_auc_score(mortality,
+                resampled_aucs[3 + 3*i].append(roc_auc_score(sex_mortality,
                     non_adjusted_qfi))
                 # Age and sex paired QFIs:
                 age_sex_qfi = age_paired_qfi(sex_biomarkers,
                     sampled_age[sex_mask], conditions, bin_width = 5)
                 fully_adjusted_qfis.append(age_sex_qfi)
-                resampled_aucs[5+3*i].append(roc_auc_score(mortality,
+                resampled_aucs[5+3*i].append(roc_auc_score(sex_mortality,
                     age_sex_qfi))
 
 
@@ -1051,7 +1013,23 @@ if __name__ == "__main__":
             rotation = 25)
         ax.set_ylabel('AUC', fontsize = fs)
         h, l = format_legend(ax)
-        ax.legend(h, l, frameon = False, loc = 'lower left')
-        pl.savefig('Plots/PaperPlots/{}SexPrediction.pdf'.format(data_set))
+        ax.legend(h, l, frameon = False, loc = 'lower left', fontsize = 0.8*fs)
+        ax.grid(alpha = 0.3)
+        pl.savefig(plots_dir + '{}SexPrediction.pdf'.format(data_set))
+
+    ### SUPPLEMENTAL FIGURES        
+    # Demographics: Age Distributions 
+    plot_age_distribution = 0
+    if plot_age_distribution:
+        age_bins = pl.arange(20, 110, 5)
+        pl.figure(figsize = (8,6))
+        counts, bins = pl.hist(ages, age_bins)[:2]
+        bins = bins[:-1]
+        pl.xlabel('Age (years)', fontsize = fs)
+        pl.ylabel('Count', fontsize = fs)
+        filled_bins = bins[counts > 0]
+        pl.xlim(min(filled_bins) - 1, max(filled_bins) + 6)
+        pl.savefig(plots_dir + '{}AgeDistribution.pdf'.format(data_set))
+
 
     pl.show()
