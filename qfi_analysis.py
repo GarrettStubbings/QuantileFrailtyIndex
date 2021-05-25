@@ -20,23 +20,24 @@ if __name__ == "__main__":
     pl.close('all')
     
     # Data set to look at
-    data_set = "ELSA"
+    data_set = "CSHA"
     # Wave to look at if doing elsa data
-    wave = 2
+    wave = 4
 
     # Data directory
-    data_dir = "../ELSA/Data/"
+    data_dir = "Data/"
     plots_dir = "Plots/"
 
     mortality_followup = 5 # years
     condition_age = 35
+    min_count = 20
 
     # Loading data
     # Data sets are not fully standardized so there are some gory details
     # will depend on your data as well
     # Basically we want:
     #           Array of biomarker measurements
-    #           1D arrays of sex, age, mortalityality (binary at n years),
+    #           1D arrays of sex, age, mortality (binary at n years),
     #           if it's available also have fi-lab (thresholds from previous
     #           publications) and fi-clin (also not necessarily around)
     if "ELSA" in data_set:
@@ -48,6 +49,7 @@ if __name__ == "__main__":
         biomarker_list = data_df.columns[
                             biomarker_columns[0]:biomarker_columns[1]]
         biomarkers = data_df[biomarker_list].values
+        biomarker_labels = pl.asarray(biomarker_list)
         ages = data_df['age'].values
         sex = data_df['sex'].values + 1 # sex is encoded 0 male, 1 female in
         # ELSA, change it to 1, 2 like CSHA/NHANES
@@ -64,6 +66,29 @@ if __name__ == "__main__":
         # Clinical frailty here is ADL/IADL deficits
         fi_clin = data_df['ADL/IADL'].values
 
+        # Dataframe that contains number of new diagnoses at each wave
+        num_new_diagnoses_df = pd.read_csv(
+            data_dir + 'NumberOfNewDiagnoses.csv', index_col=0)
+        # dataframe that shows which wave (if any) a specific diagnosis occured
+        raw_diagnoses_df = pd.read_csv(
+            data_dir + 'WaveOfFirstDiagnosis.csv', index_col=0)
+
+        # Get the diagnosis data that overlaps with the biomarker data for this
+        # wave (not guaranteed to match perfectly)
+        matched_diagnosis_ids = num_new_diagnoses_df.id.isin(
+                                                        data_df['id'].values)
+        # reduce diagnoses dataframe
+        matched_num_diagnoses_df = num_new_diagnoses_df.loc[
+                                                matched_diagnosis_ids, :]
+        # Match the biomarkers back the otherway (could be biomarkers with no
+        # diagnoses data)
+        matched_biomarker_ids = data_df.id.isin(
+                                        matched_num_diagnoses_df['id'].values)
+        matched_data_df = data_df.loc[matched_biomarker_ids,:]
+        matched_biomarkers = matched_data_df[biomarker_list].values
+
+        matched_diagnoses_waves = raw_diagnoses_df.loc[matched_diagnosis_ids,:]
+
     elif "NHANES" in data_set:
         file_name = data_dir + "nhanes.csv"
         biomarker_columns = [0, -7]
@@ -71,6 +96,7 @@ if __name__ == "__main__":
         biomarker_list = data_df.columns[
                             biomarker_columns[0]:biomarker_columns[1]]
         biomarkers = data_df[biomarker_list].values
+        biomarker_labels = pl.asarray(biomarker_list)
         ages = data_df['age'].values
         sex = data_df['sex'].values # sex is encoded 1 male, 2 female in NHANES
         time_to_death = data_df['TTD'].values # in months
@@ -85,6 +111,7 @@ if __name__ == "__main__":
         biomarker_list = data_df.columns[
                             biomarker_columns[0]:biomarker_columns[1]]
         biomarkers = data_df[biomarker_list].values
+        biomarker_labels = pl.asarray(biomarker_list)
         ages = data_df['Age'].values
         sex = data_df['Sex'].values # sex is encoded 1 male, 2 female in NHANES
         time_to_death = data_df['TimeTillDeath'].values # in days
@@ -146,6 +173,7 @@ if __name__ == "__main__":
         # ticks for plotting
         N_ticks = [n for n in Ns]
         N_ticks[-1] = 11
+        label_pads = [10, 5, 0]
 
         # calculating full population values
         age_mask = (ages >= low_age) & (ages < high_age)
@@ -230,17 +258,23 @@ if __name__ == "__main__":
             #pl.xscale('log')
             #pl.xlabel('Number of Quantiles')
             #pl.ylabel('AUC')
-            if n == 2:
-                x_pos = 0.08
-            else:
-                x_pos = 0.6
+
+            auc_height = pl.amax(upper_99) - pl.amin(lower_99)
+            font_height = 1/(2*(n + 2)) * auc_height * 1.05
+            overlapping_aucs = lower_99[1:7]
+            y_lim = [pl.amin([pl.amin(lower_99)*0.99, pl.amin(overlapping_aucs)
+                                                    - font_height]),
+                    pl.amax(upper_99)*1.01]
+            p.set_ylim(y_lim)
+            x_pos = 3
+            y_pos = y_lim[0]
             p.annotate('{0} {1} Biomarkers'.format(selection_types[n],
                                                 num_deficits),
-                xy = (x_pos, 0.02),
-                va = 'bottom', ha = 'left', xycoords = 'axes fraction',
+                xy = (x_pos, y_pos),
+                va = 'bottom', ha = 'left', 
                 fontsize = fs)
         
-        pl.legend(loc = 'lower right')
+        pl.legend(loc = 'lower right', frameon=True)
         #ax[0,0].annotate(study_name + ' Data', xy = (0.01, 1.0), va = 'bottom',
         #    xycoords = 'axes fraction', fontsize = fs)
         pl.annotate('Number of Risk Categories', xy = (0.55, 0.03),
@@ -249,7 +283,7 @@ if __name__ == "__main__":
             va = 'center', ha = 'center', xycoords = 'figure fraction',
             fontsize = fs)
         pl.savefig(plots_dir + 
-            '{0}QuantileCoarsening{1}.pdf'.format(data_set, date))
+            '{0}QuantileCoarsening.pdf'.format(data_set))
 
     # Figure 3: cross validation with GCP and age-reference resampling
     qfi_prediction_plot = 0
@@ -411,8 +445,169 @@ if __name__ == "__main__":
             '{0}CrossValidation{1}.pdf'.format(data_set, date))
 
     # Figure 4: QFI vs FI-Clin and Age (any data set)
+    plot_fi_clin_vs_qfi = 1
+    if plot_fi_clin_vs_qfi:
+        bin_width = 0.05
+        fi_bins = pl.arange(0, 1+bin_width, bin_width)
+        reference_ages = [80, 85]
+        age_mask = (ages >= reference_ages[0]) & (
+                        ages < reference_ages[1])
+        age_reference_biomarkers = biomarkers[age_mask,:]
+        age_reference_quantiles = projected_quantiles(biomarkers,
+            age_reference_biomarkers, conditions)
+        age_reference_qfi = pl.nanmean(age_reference_quantiles, axis = 1)
+
+        # Using the age binned FI for FI-X
+        mid_points, fi_clin_binned = bin_x_by_y(fi_clin, age_reference_qfi,
+                                                                    fi_bins)
+        means = [pl.average(f) for f in fi_clin_binned]
+        size_mask = pl.asarray([len(f) > min_count for f in fi_clin_binned])
+        means = pl.asarray(means)[size_mask]
+        errors = [pl.std(f)/pl.sqrt(len(f)) for f in fi_clin_binned]
+        errors = pl.asarray(errors)[size_mask]
+
+        pl.figure(figsize = (8,6))
+        pl.errorbar(mid_points[size_mask], means, yerr = errors,
+            fmt = 'C0o', capsize = 3, ms = 10)
+        #    label = 'Age Reference, C-index: {:.3f}'.format(c))
+
+        pl.xlabel('QFI', fontsize = fs)
+        pl.ylabel('FI-Clin', fontsize = fs)
+        #pl.legend()
+        pl.savefig(plots_dir + '{0}FIClinVsQFI.pdf'.format(data_set))
+ 
+    plot_fi_vs_age = 0
+    if plot_fi_vs_age:
+        reference_ages = [80,85]
+        min_age = min(ages) - min(ages)%bin_width
+        max_age = max(ages)
+        age_bins = pl.arange(min_age, max_age + bin_width, bin_width)
+
+        age_mask = (ages >= reference_ages[0]) & (
+                    ages < reference_ages[1])
+        age_reference_biomarkers = biomarkers[age_mask,:]
+        age_reference_quantiles = projected_quantiles(biomarkers,
+            age_reference_biomarkers, conditions)
+            
+        qfi = pl.nanmean(age_reference_quantiles, axis = 1)
+
+        pl.figure(figsize = (8,6))
+        mid_points, qfi_age_binned = bin_x_by_y(qfi, ages, age_bins)
+        qfi_size_mask = [len(a) > min_count for a in qfi_age_binned]
+        qfi_means = [pl.average(f) for i, f in enumerate(qfi_age_binned)
+             if qfi_size_mask[i]]
+        qfi_errors = [pl.std(f)/(pl.sqrt(len(f))) for i, f in
+             enumerate(qfi_age_binned) if qfi_size_mask[i]]
+        pl.errorbar(mid_points[qfi_size_mask], qfi_means, yerr = qfi_errors,
+            fmt = 'C0o', label = 'QFI', capsize = 3, ms = 10)
+       
+        mid_points, fi_clin_age_binned = bin_x_by_y(fi_clin, ages, age_bins)
+        clin_size_mask = [len(a) > min_count for a in fi_clin_age_binned]
+        fi_clin_means = [pl.average(f) for i, f in
+            enumerate(fi_clin_age_binned) if clin_size_mask[i]]
+        fi_clin_errors = [pl.std(f)/(pl.sqrt(len(f))) for i, f in 
+            enumerate(fi_clin_age_binned) if clin_size_mask[i]]
+        
+
+        pl.errorbar(mid_points[clin_size_mask], fi_clin_means,
+            yerr = fi_clin_errors,
+            fmt = 'ks', label = 'FI-Clin', capsize = 3, ms = 8)
+        pl.xlabel('Age (years)', fontsize = fs)
+        pl.ylabel('FI', fontsize = fs)
+        pl.legend(fontsize = fs, frameon = False)
+        pl.savefig(plots_dir + '{0}FIvsAge{1}.pdf'.format(data_set, date))
 
     # Figure 4: ELSA-Specific Plotting Stuff: Diagnoses etc.
+    diagnoses = 0
+    if "ELSA" not in data_set:
+        print("Select ELSA Data to plot Diagnosis data")
+        diagnoses = 0
+    if diagnoses:
+
+        ##### FIGURE 4C: TOTAL DIAGNOSES UP TO THIS WAVE
+        reference_ages = [80,85]
+        matched_ages = matched_data_df['age'].values
+        age_mask = (matched_ages >= reference_ages[0]) & (
+                    matched_ages < reference_ages[1])
+        age_reference_biomarkers = matched_biomarkers[age_mask,:]
+        age_reference_quantiles = projected_quantiles(matched_biomarkers,
+            age_reference_biomarkers, conditions)
+        age_reference_qfi = pl.nanmean(age_reference_quantiles, axis = 1)
+
+        # counting up the diagnoses
+        total_diagnoses = matched_num_diagnoses_df['wave0'].values
+        if '4' in data_set:
+            total_diagnoses += matched_num_diagnoses_df['wave2'].values
+
+        bin_width = 0.05
+        qfi_bins = pl.arange(0, 1 + bin_width, bin_width)
+        mid_points, qfi_binned_diagnoses_counts = bin_x_by_y(total_diagnoses,
+                                            age_reference_qfi, qfi_bins)
+
+        fig, ax = pl.subplots(1,1,figsize = (8,6))
+
+        # have to select bins with enough people in them (min_count)
+        mid_points = pl.around(mid_points, decimals = 3)
+        mid_points = [mp for i, mp in enumerate(mid_points) if
+            len(qfi_binned_diagnoses_counts[i]) > min_count]
+        tick_positions = mid_points + [mid_points[-1] + bin_width]
+        tick_positions = [pos - bin_width/2 for pos in tick_positions]
+        tick_labels = ["{:.2f}".format(pos) for pos in tick_positions]
+        qfi_binned_diagnoses_counts = [count for count in
+            qfi_binned_diagnoses_counts  if len(count) > min_count]
+        # plot on box and whisker
+        pl.boxplot(qfi_binned_diagnoses_counts, showmeans = True,
+            positions = mid_points, whis = [1,99],
+            meanline = True, widths = 0.025,
+            meanprops = dict(linestyle = '-', color = 'k', alpha = 1,
+                linewidth = 1.7, label = 'Mean'),
+            medianprops = dict(linestyle = '--', color = 'k', alpha = 1,
+                linewidth = 1.4, label = 'Median'))
+        h, l = format_legend(ax)
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels(tick_labels)
+        ax.legend(h, l, frameon = False, fontsize=fs,
+            loc = 'upper left')
+        ax.set_xlim(min(mid_points) - 0.025, max(mid_points) + 0.025)
+        pl.ylabel('Total Number of Diagnoses', fontsize = fs)
+        pl.xlabel('QFI', fontsize = fs)
+        pl.savefig(plots_dir + '{0}TotalDiagnoses.pdf'.format(
+                                                        data_set))
+
+
+        #### Figure 4d: Proportion with 1 or more new diagnoses in following
+        #### wave
+        fig, ax = pl.subplots(1,1,figsize = (8,6))
+        # Grab wave of first diagnosis data
+        wave_of_first_diagnosis = matched_diagnoses_waves.values
+        followup_wave = wave + 1
+        diagnoses_at_followup = (wave_of_first_diagnosis == followup_wave)
+        num_new_diagnoses = pl.sum(diagnoses_at_followup, axis = 1)
+        mid_points, qfi_binned_diagnoses = bin_x_by_y(num_new_diagnoses,
+                                                age_reference_qfi, qfi_bins)
+        mid_points = pl.around(mid_points, decimals = 3)
+        mid_points = [mp for i, mp in enumerate(mid_points) if
+            len(qfi_binned_diagnoses[i]) > min_count]
+        qfi_binned_diagnoses = [d for d in qfi_binned_diagnoses
+                                        if len(d) > min_count]
+
+        proportions = [pl.average(d > 0.5) for d in qfi_binned_diagnoses]
+        errors = [pl.sqrt(p*(1-p)/len(qfi_binned_diagnoses[i])) for i, p in
+            enumerate(proportions)]
+        ax.errorbar(mid_points, proportions, yerr = errors,
+            fmt = 'ko', capsize = 3)
+        #ax.legend(h, l, frameon = False, fontsize=fs,
+        #    loc = 'upper left')
+        ax.set_xlim(min(mid_points) - 0.025,
+            max(mid_points) + 0.025)
+
+        pl.ylabel('Proportion with New Diagnoses', fontsize = fs)
+        #pl.legend()
+        pl.xlabel('QFI', fontsize = fs)
+        #pl.title('{0}, {1}'.format(wave_id, date))
+        #pl.savefig('plots/PaperPlots/{0}{1}DiagnosesVs{3}FI{2}.pdf'.format(
+        #    wave_id, diag_type, date, fi_type.replace(" ", "")))
+
 
     # Figure 5: Limits of QFI with changing age reference
     # No Published FI-Lab to compare for ELSA data
@@ -517,7 +712,7 @@ if __name__ == "__main__":
     # Figure 6: age-controlled prediction plot
     # here hard coded for QFI-80
     # There are a million different things to fit and measure here
-    age_paired_prediction = 1
+    age_paired_prediction = 0
     if age_paired_prediction:
         bin_width = 5
         n_samp = 100
@@ -729,6 +924,134 @@ if __name__ == "__main__":
                                         (1 - weighted) * 'Non' +'Weighted'))
 
 
+    # Figure 7: Example of sex-controlled quantiles
+    # a tad wobbly based on picking the biomarker
+    sex_specific_example = 0
+    if sex_specific_example:
+        
+        # Start with an example figure
+        sex_labels = ['Male', 'Female']
+        sex_masks = [(sex == 1), (sex == 2)]
+
+        values = [0, 0.2, 0.85, 1]
+        colors = get_colours_from_cmap(values)
+
+        sex_colours = ['C0', colors[2]]
+        sex_markers = ['o', '^']
+        
+        quantiles = projected_quantiles(biomarkers, biomarkers, conditions)
+        
+        example_biomarker_index = 4
+        example_biomarker_label = biomarker_labels[example_biomarker_index]
+        example_biomarker_condition = conditions[example_biomarker_index]
+
+        # extending the biomarker label into something legible
+        use_extended_label = 0
+        if use_extended_label:
+            full_biomarker_label = ""
+        else:
+            full_biomarker_label = example_biomarker_label
+        
+        example_biomarker = biomarkers[:, example_biomarker_index]
+        example_biomarker_quantiles = quantiles[:, example_biomarker_index]
+ 
+        combined_sex_specific_fi = []
+        combined_sex_specific_mortality = []
+        fi_shifts = [] 
+        auc_shifts = []
+        pl.figure(figsize = (8, 6))
+        for i, label in enumerate(sex_labels):
+            mask = sex_masks[i]
+            sex_specific_biomarkers = biomarkers[mask,:]
+            non_specific_quantiles = quantiles[mask,:]
+            non_specific_fi = pl.nanmean(non_specific_quantiles, axis = 1)
+            sex_specific_quantiles = projected_quantiles(
+                sex_specific_biomarkers, sex_specific_biomarkers, conditions)
+            sex_specific_fi = pl.nanmean(sex_specific_quantiles, axis = 1)
+            combined_sex_specific_fi += (list(sex_specific_fi))
+            combined_sex_specific_mortality += (list(mortality[mask]))
+            
+            fi_shifts.append(sex_specific_fi - non_specific_fi)
+            auc_shifts.append(roc_auc_score(mortality[mask], sex_specific_fi)
+                - roc_auc_score(mortality[mask], non_specific_fi))
+            non_specific_example_biomarker_quantiles = (
+                example_biomarker_quantiles[mask])
+            sex_specific_example_biomarker_quantiles = rank_normalize(
+                        example_biomarker[mask], example_biomarker_condition)
+            pl.plot(example_biomarker[mask],
+                non_specific_example_biomarker_quantiles,
+                ls = '', color = sex_colours[i], mfc = 'none',
+                marker = sex_markers[i])
+
+            pl.plot(example_biomarker[mask],
+                sex_specific_example_biomarker_quantiles,
+                ls = '', color = sex_colours[i], marker = sex_markers[i])
+
+            #### Dummy plots to make the legend look better
+            pl.plot(pl.nan, pl.nan, ls = '',
+                color = sex_colours[i], mfc = 'none', marker = sex_markers[i],
+                label = '{}, Non-Adjusted'.format(sex_labels[i]), ms = 12)
+            pl.plot(pl.nan, pl.nan, ls = '', ms = 12,
+                color = sex_colours[i], marker = sex_markers[i],
+                label = '{}, Sex-Adjusted'.format(sex_labels[i]))
+
+
+        pl.legend(loc = 'upper right', fontsize = fs, frameon = False)
+        pl.xlabel(full_biomarker_label, fontsize = fs)
+        pl.ylabel('x', fontsize = fs)
+        pl.savefig(plots_dir + '{0}SexDifference{1}QuantileExample.pdf'.format(
+                data_set, example_biomarker_label))
+
+
+        # Plotting the shift in FI
+        pl.figure(figsize = (8, 6))
+        female_shift = fi_shifts[1]
+        male_shift = fi_shifts[0]
+        bw = 0.1/20
+        bins = pl.arange(pl.amin(female_shift), pl.amax(male_shift) + bw, bw)
+        pl.hist(female_shift, bins, color = sex_colours[1],
+                label = sex_labels[1])
+        pl.hist(male_shift, bins, color = sex_colours[0],
+                label = sex_labels[0])
+        counts = pl.hist(female_shift, bins, edgecolor = sex_colours[1],
+            facecolor = 'none',)[0]
+        #    hatch = 'none')
+        pl.legend(loc = 'upper right', fontsize = fs, frameon = False)
+        pl.xlabel('Shift in FI', fontsize = fs)
+        pl.ylabel('Count', fontsize = fs)
+        pl.ylim(0, 1.1*max(counts))
+        pl.savefig(plots_dir + '{}SexDifferenceFIShift.pdf'.format(
+            data_set))
+
+
+            
+
+        # Distributions example
+        n_bins = 20
+        biomarker_range = -(pl.nanmin(example_biomarker) -
+            pl.nanmax(example_biomarker))
+        bw = biomarker_range/n_bins
+        bins = pl.arange(pl.nanmin(example_biomarker),
+            pl.nanmax(example_biomarker) + bw, bw)
+         
+        pl.figure(figsize = (8,6))
+
+        example_biomarker_male = example_biomarker[sex_masks[0]]
+        example_biomarker_female = example_biomarker[sex_masks[1]]
+        pl.hist(example_biomarker_female, bins, color = sex_colours[1],
+            label = sex_labels[1])
+        pl.hist(example_biomarker_male, bins, color = sex_colours[0],
+            label = sex_labels[0])
+        counts = pl.hist(example_biomarker_female, bins,
+            edgecolor = sex_colours[1], facecolor = 'none',)[0]
+        pl.legend(loc = 'upper right', fontsize = fs, frameon = False)
+        pl.xlabel(full_biomarker_label, fontsize = fs)
+        pl.ylabel('Count', fontsize = fs)
+        pl.ylim(0, 1.1*max(counts))
+        pl.savefig(plots_dir + '{0}SexDifference{1}Distribution.pdf'.format(
+            data_set, example_biomarker_label))
+
+
     # Figure 7: sex-controlled QFI vs Age and QFI
     plot_stratified_qfi = 0
     if plot_stratified_qfi:
@@ -737,7 +1060,7 @@ if __name__ == "__main__":
         vorders = [10, 1]
 
         values = [0, 0.2, 0.85, 1]
-        colors = get_colors_from_cmap(values)
+        colors = get_colours_from_cmap(values)
 
         sex_colours = ['C0', colors[2]]
         sex_markers = ['o', 's']
@@ -753,10 +1076,8 @@ if __name__ == "__main__":
             sex_mask = sex_masks[i]
             both_mask = sex_mask & age_mask
             sex_biomarkers = biomarkers[sex_mask,:]
+
             reference_biomarkers = biomarkers[both_mask, :]
-
-
-
 
             adjusted_quantiles = projected_quantiles(sex_biomarkers,
                 reference_biomarkers, conditions)
@@ -823,6 +1144,7 @@ if __name__ == "__main__":
             sex_mask = sex_masks[i]
             both_mask = sex_mask & age_mask
             sex_biomarkers = biomarkers[sex_mask,:]
+
             reference_biomarkers = biomarkers[both_mask, :]
             adjusted_quantiles = projected_quantiles(sex_biomarkers,
                 reference_biomarkers, conditions)
@@ -887,6 +1209,7 @@ if __name__ == "__main__":
         mortality_list = []
         sex_adjusted_qfi_list  = []
         fully_adjusted_qfi_list = []
+        sex_specific_conditions = []
         for sex_mask in sex_masks:
             # non-adjusted
             aucs.append(roc_auc_score(mortality[sex_mask], qfi[sex_mask]))
@@ -912,7 +1235,7 @@ if __name__ == "__main__":
                                 pl.concatenate(fully_adjusted_qfi_list)))
 
         values = [0, 0.2, 0.85, 1]
-        colors = get_colors_from_cmap(values)
+        colors = get_colours_from_cmap(values)
         
 
         sex_colours = ['C0', colors[2]]
@@ -1018,17 +1341,28 @@ if __name__ == "__main__":
         pl.savefig(plots_dir + '{}SexPrediction.pdf'.format(data_set))
 
     ### SUPPLEMENTAL FIGURES        
-    # Demographics: Age Distributions 
+    # Demographics: Age Distributions  With mortality also
     plot_age_distribution = 0
     if plot_age_distribution:
-        age_bins = pl.arange(20, 110, 5)
+        bin_width = 5
+        age_bins = pl.arange(20, 110, bin_width)
+        mortality_counts = [
+            pl.sum(mortality[(ages >= low_age) & (ages < age_bins[i+1])])
+            for i, low_age in enumerate(age_bins[:-1])]
         pl.figure(figsize = (8,6))
-        counts, bins = pl.hist(ages, age_bins)[:2]
+        counts, bins = pl.hist(ages, age_bins,
+            label = "Age Distribution\nTotal Number:{}".format(
+                                                    len(mortality)))[:2]
         bins = bins[:-1]
         pl.xlabel('Age (years)', fontsize = fs)
         pl.ylabel('Count', fontsize = fs)
+        pl.bar(bins, mortality_counts, width = bin_width, align = 'edge', 
+            color = 'C1',
+            label = "Mortality Distribution\nTotal Number:{}".format(
+                                                            pl.sum(mortality)))
         filled_bins = bins[counts > 0]
         pl.xlim(min(filled_bins) - 1, max(filled_bins) + 6)
+        pl.legend(fontsize = fs)
         pl.savefig(plots_dir + '{}AgeDistribution.pdf'.format(data_set))
 
 
