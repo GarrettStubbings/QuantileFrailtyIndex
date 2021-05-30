@@ -20,9 +20,9 @@ if __name__ == "__main__":
     pl.close('all')
     
     # Data set to look at
-    data_set = "CSHA"
+    data_set = "ELSA"
     # Wave to look at if doing elsa data
-    wave = 4
+    wave = 2
 
     # Data directory
     data_dir = "Data/"
@@ -445,7 +445,7 @@ if __name__ == "__main__":
             '{0}CrossValidation{1}.pdf'.format(data_set, date))
 
     # Figure 4: QFI vs FI-Clin and Age (any data set)
-    plot_fi_clin_vs_qfi = 1
+    plot_fi_clin_vs_qfi = 0
     if plot_fi_clin_vs_qfi:
         bin_width = 0.05
         fi_bins = pl.arange(0, 1+bin_width, bin_width)
@@ -1365,5 +1365,41 @@ if __name__ == "__main__":
         pl.legend(fontsize = fs)
         pl.savefig(plots_dir + '{}AgeDistribution.pdf'.format(data_set))
 
+    # Details of age averaged predictions plots
+    plot_age_stratified_auc = 1
+    if plot_age_stratified_auc:
+        reference_ages = [80,85]
+        age_mask = (ages >= reference_ages[0]) & (
+                    ages < reference_ages[1])
+        age_reference_biomarkers = biomarkers[age_mask,:]
+        age_reference_quantiles = projected_quantiles(biomarkers,
+            age_reference_biomarkers, conditions)
+            
+        age_reference_qfi = pl.nanmean(age_reference_quantiles, axis = 1)
+        age_reference_auc = roc_auc_score(mortality, age_reference_qfi)
+        age_paired_qfi = age_paired_qfi(biomarkers, ages, conditions)
+        
+        
+        age_paired_averaged_auc, age_paired_aucs, mid_points = (
+                    age_averaged_prediction(age_paired_qfi, mortality, ages,
+                                                            ret_all = True))
+        age_paired_auc = roc_auc_score(mortality, age_paired_qfi) 
+        age_reference_averaged_auc = age_averaged_prediction(
+                                            age_reference_qfi, mortality, ages)
+        pl.plot(mid_points, age_paired_aucs, 'C0o',
+            label = 'Age-Restricted QFI')
+        pl.axhline(age_paired_auc, ls = ":",
+            label = 'Age-Paired QFI')
+        pl.axhline(age_reference_auc, ls = "-",
+            label = 'No Age Control')
+        pl.xlabel('Age (years)', fontsize = fs)
+        pl.ylabel('AUC', fontsize = fs)
+        pl.legend()
+        pl.savefig(plots_dir +
+            '{0}AgeStratifiedPrediction.pdf'.format(data_set))
+ 
+            
+
+    
 
     pl.show()
