@@ -4,7 +4,7 @@ Data analysis and visualization code for publication, written in python, includi
 # Contents
 Example code (example_analysis.py) going over basic functions and simple visualizations.
 
-Big mess of code snippets written to produce specific plots for publication: ELSA_analysis.py and CSHA_NHANES_analysis.py.
+Then the meat and potatoes: qfi_analysis.py has the code to generate all of the plots from the quantile frailty index paper (citation missing). It uses functions from qfi_functions.py, some of which are ancient, and may be lacking in documentation.
 
 # Making it Go
 Need the following things to make MOST of the analysis go:
