@@ -22,7 +22,7 @@ if __name__ == "__main__":
     # Data set to look at
     data_set = "ELSA"
     # Wave to look at if doing elsa data
-    wave = 2
+    wave = 4
 
     # Data directory
     data_dir = "Data/"
@@ -130,6 +130,68 @@ if __name__ == "__main__":
     conditions = spearman_age_conditions(biomarkers, ages, condition_age)
 
     # Figure 1: Rank normalization and reference cohort examples (in ELSA)
+    gait_speed_example = 0
+    if gait_speed_example:
+        old = ((ages < 90) & (ages >= 80))
+        young = ((ages < 70) & (ages >= 60))
+        
+        gait = biomarkers[:,2]
+
+        gait_young = (gait[young])
+        gait_young = gait_young[~pl.isnan(gait_young)]
+        gait_young_x = pl.searchsorted(pl.sort(-gait_young), -gait_young)/(
+            len(gait_young))
+        gait_old = (gait[old])
+        gait_old = gait_old[~pl.isnan(gait_old)]
+        gait_old_x = pl.searchsorted(pl.sort(-gait_old), -gait_old)/(
+            len(gait_old))
+
+        values = [0, 0.2, 0.85, 1]
+        colors = get_colours_from_cmap(values)
+        
+        c_old = 'C0'
+        c_young = colors[2]
+        
+        pl.figure(figsize = (8,6))
+        pl.plot(gait_young, gait_young_x, ls = '', color = c_young,
+            marker = 'o')
+        pl.plot(gait_old, gait_old_x, ls = '', color = c_old,
+            marker = 'o')
+        pl.ylabel('x', fontsize = fs)
+        pl.xlabel('Gait Speed m/s', fontsize = fs)
+        pl.savefig(plots_dir + 'gaitSpeedXExample.pdf')
+
+        bw = 0.5/5
+        bins = pl.arange(pl.nanmin(gait), pl.nanmax(gait) + bw, bw)
+     
+
+        pl.figure(figsize = (8,6))
+        pl.hist(gait_young, bins, color = c_young, label = 'Ages [60, 70)')
+        pl.hist(gait_old, bins, color = c_old, label = 'Ages [80, 90)')
+        counts = pl.hist(gait_young, bins, edgecolor = c_young,
+            facecolor = 'none',)[0]
+        #    hatch = 'none')
+        pl.legend(loc = 'upper left', fontsize = fs, frameon = False)
+        pl.xlabel('Gait Speed m/s', fontsize = fs)
+        pl.ylabel('Count', fontsize = fs)
+        pl.ylim(0, 1.3*max(counts))
+        pl.savefig(plots_dir + 'gaitSpeedHistogram.pdf')
+
+        old_ages = ages[old]
+        young_ages = ages[young]
+
+        pl.figure(figsize = (8,6))
+        age_bins = pl.arange(min(ages), max(ages) + 2, 2)
+        pl.hist(young_ages, age_bins, color = c_young, label = 'Ages [60, 70)')
+        pl.hist(old_ages, age_bins, color = c_old, label = 'Ages [80, 90)')
+        pl.hist(ages, age_bins, facecolor = 'none', edgecolor = 'k')
+        pl.xlabel('Age (years)', fontsize = 2*fs)
+        pl.ylabel('Count', fontsize = 2*fs)
+        pl.subplots_adjust(bottom = 0.15, left = 0.15)
+        pl.xticks(fontsize = fs)
+        pl.yticks(fontsize = fs)
+        pl.savefig(plots_dir + 'ExampleAgeDistributionELSAWave2.pdf')
+
 
     # Figure 2 in QFI paper: number of quantiles considered
     quantile_coarsening_plot = 0
@@ -519,7 +581,7 @@ if __name__ == "__main__":
 
     # Figure 4: ELSA-Specific Plotting Stuff: Diagnoses etc.
     diagnoses = 0
-    if "ELSA" not in data_set:
+    if "ELSA" not in data_set and diagnoses:
         print("Select ELSA Data to plot Diagnosis data")
         diagnoses = 0
     if diagnoses:
@@ -605,8 +667,8 @@ if __name__ == "__main__":
         #pl.legend()
         pl.xlabel('QFI', fontsize = fs)
         #pl.title('{0}, {1}'.format(wave_id, date))
-        #pl.savefig('plots/PaperPlots/{0}{1}DiagnosesVs{3}FI{2}.pdf'.format(
-        #    wave_id, diag_type, date, fi_type.replace(" ", "")))
+        pl.savefig(plots_dir + '{}NewDiagnoses.pdf'.format(data_set))
+
 
 
     # Figure 5: Limits of QFI with changing age reference
@@ -712,7 +774,7 @@ if __name__ == "__main__":
     # Figure 6: age-controlled prediction plot
     # here hard coded for QFI-80
     # There are a million different things to fit and measure here
-    age_paired_prediction = 0
+    age_paired_prediction = 1
     if age_paired_prediction:
         bin_width = 5
         n_samp = 100
@@ -798,7 +860,7 @@ if __name__ == "__main__":
         params = result.params
         pred = logreg.predict(params, biomarkers_mean_fill)
         aucs.append(roc_auc_score(mortality, pred))
-        labels.append('Biomarkers + \nage LogReg')
+        labels.append('Biomarkers + \nAge LogReg')
 
 
         #### CROSS balidation time.
@@ -937,18 +999,18 @@ if __name__ == "__main__":
         colors = get_colours_from_cmap(values)
 
         sex_colours = ['C0', colors[2]]
-        sex_markers = ['o', '^']
+        sex_markers = ['o', 's']
         
         quantiles = projected_quantiles(biomarkers, biomarkers, conditions)
         
-        example_biomarker_index = 4
+        example_biomarker_index = 9
         example_biomarker_label = biomarker_labels[example_biomarker_index]
         example_biomarker_condition = conditions[example_biomarker_index]
 
         # extending the biomarker label into something legible
-        use_extended_label = 0
+        use_extended_label = 1
         if use_extended_label:
-            full_biomarker_label = ""
+            full_biomarker_label = "Mean Corpuscular Volume"
         else:
             full_biomarker_label = example_biomarker_label
         
@@ -979,24 +1041,24 @@ if __name__ == "__main__":
             sex_specific_example_biomarker_quantiles = rank_normalize(
                         example_biomarker[mask], example_biomarker_condition)
             pl.plot(example_biomarker[mask],
-                non_specific_example_biomarker_quantiles,
+                non_specific_example_biomarker_quantiles, ms = 6 - 3*i,
                 ls = '', color = sex_colours[i], mfc = 'none',
                 marker = sex_markers[i])
 
             pl.plot(example_biomarker[mask],
-                sex_specific_example_biomarker_quantiles,
+                sex_specific_example_biomarker_quantiles, ms = 7,
                 ls = '', color = sex_colours[i], marker = sex_markers[i])
 
             #### Dummy plots to make the legend look better
             pl.plot(pl.nan, pl.nan, ls = '',
                 color = sex_colours[i], mfc = 'none', marker = sex_markers[i],
-                label = '{}, Non-Adjusted'.format(sex_labels[i]), ms = 12)
-            pl.plot(pl.nan, pl.nan, ls = '', ms = 12,
+                label = '{}, Non-Adjusted'.format(sex_labels[i]), ms = 6)
+            pl.plot(pl.nan, pl.nan, ls = '', ms = 10,
                 color = sex_colours[i], marker = sex_markers[i],
                 label = '{}, Sex-Adjusted'.format(sex_labels[i]))
 
 
-        pl.legend(loc = 'upper right', fontsize = fs, frameon = False)
+        pl.legend(fontsize = fs, frameon = False)
         pl.xlabel(full_biomarker_label, fontsize = fs)
         pl.ylabel('x', fontsize = fs)
         pl.savefig(plots_dir + '{0}SexDifference{1}QuantileExample.pdf'.format(
@@ -1153,11 +1215,11 @@ if __name__ == "__main__":
             mid_points, binned_adjusted_qfi = bin_x_by_y(fi_clin[sex_mask], 
                 adjusted_qfi, qfi_bins)
 
-            length_mask = [len(a) > 10 for a in binned_adjusted_qfi]
+            length_mask = [len(a) > min_count for a in binned_adjusted_qfi]
             adjusted_means = [pl.average(a) for a in binned_adjusted_qfi
-                if len(a) > 10]
+                if len(a) > min_count]
             adjusted_errors = [pl.std(a)/pl.sqrt(len(a)) for a in
-                binned_adjusted_qfi if len(a) > 10]
+                binned_adjusted_qfi if len(a) > min_count]
 
             pl.errorbar(mid_points[length_mask], adjusted_means,
                 yerr = adjusted_errors,
@@ -1169,12 +1231,12 @@ if __name__ == "__main__":
             non_adjusted_qfi = qfi_80[sex_mask]
             mid_points, binned_qfi = bin_x_by_y(fi_clin[sex_mask],
                 non_adjusted_qfi, qfi_bins)
-            length_mask = [len(a) > 10 for a in binned_qfi]
+            length_mask = [len(a) > min_count for a in binned_qfi]
 
             non_adjusted_means = [pl.average(a) for a in
-                binned_qfi if len(a) > 10]
+                binned_qfi if len(a) > min_count]
             non_adjusted_errors = [pl.std(a)/pl.sqrt(len(a)) for a in
-                binned_qfi if len(a) > 10]
+                binned_qfi if len(a) > min_count]
             pl.errorbar(mid_points[length_mask], non_adjusted_means,
                 yerr = non_adjusted_errors, c = sex_colours[i],
                 marker = sex_markers[i], mfc = 'w', ls = 'none', capsize = 3,
@@ -1366,7 +1428,7 @@ if __name__ == "__main__":
         pl.savefig(plots_dir + '{}AgeDistribution.pdf'.format(data_set))
 
     # Details of age averaged predictions plots
-    plot_age_stratified_auc = 1
+    plot_age_stratified_auc = 0
     if plot_age_stratified_auc:
         reference_ages = [80,85]
         age_mask = (ages >= reference_ages[0]) & (
