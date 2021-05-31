@@ -126,13 +126,20 @@ def projected_quantiles(data, reference_data, conds):
     return projected_dist
 
 def age_averaged_prediction(fi, mort, ages, measure = 'auc', bin_years = 5,
-    weighted = True):
+    weighted = True, ret_all = False):
     """ weighted (or not) average of predictive value over age groups """
     bins = pl.arange(min(ages), max(ages) + bin_years, bin_years)
     fi_binned = bin_x_by_y(fi, ages, bins)[1]
     mort_binned = bin_x_by_y(mort, ages, bins)[1]
+    mid_points = [b + bin_years/2 for i, b in enumerate(bins[:-1]) if
+            len(mort_binned[i]) > 0]
+
     valid_bins = [(pl.average(m) != 1) & (pl.average(m) != 0) for m in
                             mort_binned]
+    mid_points = [b + bin_years/2 for i, b in enumerate(bins[:-1]) if
+            valid_bins[i]]
+
+
     fi_binned = [f for i, f in enumerate(fi_binned) if valid_bins[i]]
     mort_binned = [m for i, m in enumerate(mort_binned) if valid_bins[i]]
     total_considered_events = 0
@@ -145,9 +152,15 @@ def age_averaged_prediction(fi, mort, ages, measure = 'auc', bin_years = 5,
     aucs = [roc_auc_score(m, fi_binned[i]) for i, m in
         enumerate(mort_binned) if len(m) > 0]
     if weighted:
-        return pl.average(aucs, weights = weights)
+        if ret_all:
+            return pl.average(aucs, weights = weights), aucs, mid_points
+        else:
+            return pl.average(aucs, weights = weights)
     else:
-        return pl.average(aucs)
+        if ret_all:
+            return pl.average(aucs), aucs, mid_points
+        else:
+            return pl.average(aucs)
 
 def bin_x_by_y(x, y, bins):
     """Bin some data by the other data
@@ -434,5 +447,49 @@ def fi_gcp_cross_validation(data, mort, cutpoints, cond, cutpoint_type,
                 prediction = roc_auc_score(test_mort, test_frailty)
             predictions.append(prediction)
     return predictions
+
+def rank_normalize(data, cond = operator.gt):
+    """ Rank normalizes a single measurement."""
+    # sort the data ascending
+    data_sorted = pl.sort(data)
+    # find where the values of col would go in the sorted list
+    # NOTE danger low needs to be solved on the right because it will
+    # end up being reversed
+    side = 'left'
+    if cond == operator.lt:
+        side = 'right'
+    
+    data_index = pl.searchsorted(data_sorted, data, side = side)
+    # we now use the number of deficits in that row to create a fraction
+    data_frac = data_index/len(data[~pl.isnan(data)])
+    # any nans now have value 1 so switch them back to nan 
+    # NOTE: (there may not be any real nans
+    if sum(pl.isnan(data)) > 0:
+        data_frac[data_frac == pl.amax(data_frac)] = pl.nan
+    # rectify in the case of danger low
+    if cond == operator.lt:
+        data_frac = 1 - data_frac
+    return data_frac
+
+def roc_conds(data, mort, ret_aucs = False):
+    """calculates the best conditions based on roc analysis"""
+    conds = []
+    aucs = []
+    for d in range(pl.shape(data)[1]):
+        col = pl.copy(data[:,d])
+        mort_nonan = pl.copy(mort)
+        if sum(pl.isnan(col)) > 0:
+            mort_nonan = pl.copy(mort[~pl.isnan(col)])
+            col = col[~pl.isnan(col)]
+        auc = roc_auc_score(mort_nonan, col)
+        if auc < 0.5:
+            conds.append(operator.lt)
+        else:
+            conds.append(operator.gt)
+        aucs.append(auc)#pl.amax([auc, 1-auc]))
+    if ret_aucs:
+        return conds, aucs
+    else:
+        return conds
 
 
