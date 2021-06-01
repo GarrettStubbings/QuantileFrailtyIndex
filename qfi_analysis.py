@@ -20,9 +20,9 @@ if __name__ == "__main__":
     pl.close('all')
     
     # Data set to look at
-    data_set = "ELSA"
+    data_set = "NHANES"
     # Wave to look at if doing elsa data
-    wave = 4
+    wave = 2
 
     # Data directory
     data_dir = "Data/"
@@ -350,6 +350,7 @@ if __name__ == "__main__":
     # Figure 3: cross validation with GCP and age-reference resampling
     qfi_prediction_plot = 0
     if qfi_prediction_plot:
+        plot_pub_line = 0
         fi_list = []
         fi_labels = []
         if "ELSA" not in data_set:
@@ -458,7 +459,7 @@ if __name__ == "__main__":
         full_set_aucs.append(full_logreg_auc)
         """
         fig, ax = pl.subplots(figsize = (12,6))
-        if "ELSA" not in data_set:
+        if "ELSA" not in data_set and plot_pub_line:
             ax.axhline(fi_pub_auc, ls = ':', color = 'C7',# label = 'Blodgett 2017',
                 zorder = 1, lw = 5)
         ax.boxplot(cross_list, showmeans = True, labels = labels, whis = [1,99],
@@ -475,12 +476,13 @@ if __name__ == "__main__":
             markersize = 10, label = 'Full Dataset\nCalculation', zorder = 10)
         #ax.annotate(study_name, xy = (0.99, 0.01), xycoords = 'axes fraction',
         #    va = 'bottom', fontsize = fs, ha = 'right')
-        if "NHANES" in data_set:
-            ax.annotate('Blodgett 2017', xy = (4.45, fi_pub_auc),
-                va = 'bottom', fontsize = fs*1.4, ha = 'right', color = 'C7')
-        elif "CSHA" in data_set:
-            ax.annotate('Howlett 2014', xy = (4.45, fi_pub_auc - 0.001),
-                va = 'top', fontsize = fs*1.4, ha = 'right', color = 'C7')
+        if plot_pub_line:
+            if "NHANES" in data_set:
+                ax.annotate('Blodgett 2017', xy = (4.45, fi_pub_auc),
+                    va = 'bottom', fontsize = fs*1.4, ha = 'right', color = 'C7')
+            elif "CSHA" in data_set:
+                ax.annotate('Howlett 2014', xy = (4.45, fi_pub_auc - 0.001),
+                    va = 'top', fontsize = fs*1.4, ha = 'right', color = 'C7')
 
 
 
@@ -504,7 +506,7 @@ if __name__ == "__main__":
 
 
         fig.savefig(plots_dir + 
-            '{0}CrossValidation{1}.pdf'.format(data_set, date))
+            '{0}CrossValidation.pdf'.format(data_set))
 
     # Figure 4: QFI vs FI-Clin and Age (any data set)
     plot_fi_clin_vs_qfi = 0
@@ -774,7 +776,7 @@ if __name__ == "__main__":
     # Figure 6: age-controlled prediction plot
     # here hard coded for QFI-80
     # There are a million different things to fit and measure here
-    age_paired_prediction = 1
+    age_paired_prediction = 0
     if age_paired_prediction:
         bin_width = 5
         n_samp = 100
@@ -1425,11 +1427,14 @@ if __name__ == "__main__":
         filled_bins = bins[counts > 0]
         pl.xlim(min(filled_bins) - 1, max(filled_bins) + 6)
         pl.legend(fontsize = fs)
+        if "ELSA" in data_set:
+            pl.xlim(33, 102)
         pl.savefig(plots_dir + '{}AgeDistribution.pdf'.format(data_set))
 
     # Details of age averaged predictions plots
-    plot_age_stratified_auc = 0
+    plot_age_stratified_auc = 1
     if plot_age_stratified_auc:
+        pl.figure(figsize = (8,6))
         reference_ages = [80,85]
         age_mask = (ages >= reference_ages[0]) & (
                     ages < reference_ages[1])
@@ -1446,14 +1451,19 @@ if __name__ == "__main__":
                     age_averaged_prediction(age_paired_qfi, mortality, ages,
                                                             ret_all = True))
         age_paired_auc = roc_auc_score(mortality, age_paired_qfi) 
-        age_reference_averaged_auc = age_averaged_prediction(
-                                            age_reference_qfi, mortality, ages)
-        pl.plot(mid_points, age_paired_aucs, 'C0o',
+        age_reference_averaged_auc, age_stratified_aucs, midpoints = (
+                age_averaged_prediction(age_reference_qfi, mortality, ages,
+                                        ret_all = True))
+
+        pl.plot(mid_points, age_stratified_aucs, 'C0o',
             label = 'Age-Restricted QFI')
         pl.axhline(age_paired_auc, ls = ":",
             label = 'Age-Paired QFI')
+        pl.axhline(age_reference_averaged_auc, ls = "--",
+            label = 'Age-Averaged AUC')
         pl.axhline(age_reference_auc, ls = "-",
             label = 'No Age Control')
+
         pl.xlabel('Age (years)', fontsize = fs)
         pl.ylabel('AUC', fontsize = fs)
         pl.legend()
