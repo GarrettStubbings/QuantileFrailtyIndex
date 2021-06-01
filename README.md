@@ -1,5 +1,5 @@
 # QuantileFrailtyIndex
-Data analysis and visualization code for publication, written in python, including some jupyter notebook stuff.
+Data analysis and visualization code for publication, written in python.
 
 # Contents
 Example code (example_analysis.py) going over basic functions and simple visualizations.
@@ -12,8 +12,9 @@ Need the following things to make MOST of the analysis go:
         Missing data encoded with NaN, typical FI approach of ignore missing data used.
     Age, Sex, Mortality data (e.g. Time to death/death age/binary mortality at followup).
     
-# Data Used: Can any be posted????
+# Data Used: Can any be posted? Unclear.
 ELSA data set is available for research purposes (https://www.elsa-project.ac.uk/accessing-elsa-data).
+For the ELSA data you will have to grind through and collect the data into a useable form.
 NHANES and CSHA data more widely available and easier to deal with (less reformatting to do etc.).
 
 
